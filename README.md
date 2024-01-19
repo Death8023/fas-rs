@@ -1,11 +1,14 @@
 # **FAS-RS**
 
-- [![Github stars](https://img.shields.io/github/stars/shadow3aaa/fas-rs)](https://github.com/shadow3aaa/fas-rs)
-- [![CI build](https://img.shields.io/github/actions/workflow/status/shadow3aaa/fas-rs/ci.yml)](https://github.com/shadow3aaa/fas-rs/actions)
+- [English](README_EN.md)
+- [![Stars](https://img.shields.io/github/stars/shadow3aaa/fas-rs)](https://github.com/shadow3aaa/fas-rs)
+- [![CI Build](https://img.shields.io/github/actions/workflow/status/shadow3aaa/fas-rs/ci.yml)](https://github.com/shadow3aaa/fas-rs/actions)
+- [![Release](https://img.shields.io/github/v/release/shadow3aaa/fas-rs)](https://github.com/shadow3aaa/fas-rs/releases/latest)
+- [![Download Total](https://img.shields.io/github/downloads/shadow3aaa/fas-rs/total)](https://github.com/shadow3aaa/fas-rs/releases)
 
 ## **简介**
 
-  > 假如肉眼看到的画面能直接反映在调度上, 也就是说以把调度器放在观看者的角度来决定性能, 是否就能实现完美的性能控制和最大化体验? `FAS(Frame Aware Scheduling)`就是这种调度概念, 通过监视画面渲染来尽量控制性能以在保证渲染时间的同时实现最小化开销
+  > 假如肉眼看到的画面能直接反映在调度上, 也就是说以把调度器放在观看者的角度来决定性能, 是否就能实现完美的性能控制和最大化体验? `FAS (Frame Aware Scheduling)`就是这种调度概念, 通过监视画面渲染来尽量控制性能以在保证渲染时间的同时实现最小化开销
 
 - ### **什么是`fas-rs`?**
 
@@ -39,11 +42,15 @@
     - 目前`fas-rs`还没有官方的切换模式的管理器, 而是接入了[`scene`](https://www.coolapk.com/apk/com.omarea.vtools)的配置接口, 如果你不用scene则默认使用`balance`的配置
     - 如果你有在linux上编程的一些了解, 向`/dev/fas_rs/mode`节点写入4模式中的任意一个即可切换到对应模式, 同时读取它也可以知道现在`fas-rs`所处的模式
   - **参数说明 :**
-    - tolerant_frame_offest : 偏移掉帧忍受度, 必须为浮点数(小数), 可以为负, 越小越激进
+    - fas_boost(bool): `fas-rs`的目的是限制功耗还是减少游戏掉帧, true时为减少掉帧模式
+    - scale(f64): `fas-rs`可以容忍的掉帧数
+    - jank_scale(f64): `fas-rs`判定小卡顿的掉帧数
+    - big_jank_scale(f64): `fas-rs`判定大卡顿的掉帧数
+    - use_performance_governor(bool): `fas-rs`是否在工作时使用performance内核cpufreq策略(fas_boost开启时此配置无效)
 
 ### **`games.toml`配置标准例 :**
 
-```toml
+```
 [config]
 keep_std = true
 
@@ -53,22 +60,38 @@ keep_std = true
 "com.miHoYo.enterprise.NGHSoD" = [30, 60, 90]
 "com.miHoYo.hkrpg" = [30, 60]
 "com.mojang.minecraftpe" = [60, 120]
-"com.netease.party" = [30, 120]
+"com.netease.party" = [30, 60]
 "com.shangyoo.neon" = 60
 "com.tencent.tmgp.pubgmhd" = [60, 90, 120]
 "com.tencent.tmgp.sgame" = [30, 60, 90, 120]
 
 [powersave]
-tolerant_frame_offset = 0.3
+fas_boost = false
+scale = 0.5
+jank_scale = 3.0
+big_jank_scale = 5.0
+use_performance_governor = false
 
 [balance]
-tolerant_frame_offset = 0.2
+fas_boost = false
+scale = 0.25
+jank_scale= 3.0
+big_jank_scale = 5.0
+use_performance_governor = true
 
 [performance]
-tolerant_frame_offset = 0.1
+fas_boost = false
+scale = 0.2
+jank_scale= 1.5
+big_jank_scale = 3.0
+use_performance_governor = true
 
 [fast]
-tolerant_frame_offset = 0.0
+fas_boost = true
+scale = 0.1
+jank_scale= 1.5
+big_jank_scale = 3.0
+use_performance_governor = false
 ```
 
 ## **配置合并**
@@ -90,13 +113,8 @@ tolerant_frame_offset = 0.0
   - 手动例
 
     ```bash
-    fas-rs --merge --local-profile /path/to/local/config --std-profile /path/to/std/config
+    fas-rs merge /path/to/std/profile
     ```
-    
-## **Uperf v3支持**
-
-- ### `fas-rs`支持使用uperf-v3替代系统调速器在非fas场景生效
-- ### 但是, 必须使用特殊修改过的的[uperf-v3](https://github.com/shadow3aaa/uperf-patch)来实现这一点，其它任何版本(包括官方版本)都不支持
 
 ## **编译**
 
@@ -120,3 +138,19 @@ cd fas-rs
 chmod +x ./make.sh
 ./make.sh build --release
 ```
+
+- ## **💩**
+
+I'm here to introduce you the greatest thief @tryigitx !  
+So, what did he do?  
+
+- 1. He kept stealing FAS-RS module from me without any permission, and pretended to be co-developed with me.  
+In fact, he hasn't developed any kind of project, just because he is not able to.
+  From his homepage (<https://linktr.ee/tryigitx>), we can see he is an eXpErT! lmfao🤣🤣  
+  I just can't imagine how can a real expert do these things. If @tryigitx is a real expert, pLeAsE fOrGiVe Me😭😭  
+
+- 2. He also stole other modules, like "Play Integrity Fix".  
+  He copied it and changed the author to his own, but that's not all.  
+  Maybe it's some kind of self-deception, he also changed the name to "China Play Integrity Fix".  
+  He seemed to want to express that this is for China Version ROMs, but everyone can see what he really wanted to do.
+  Now that you've all seen these, make your own judgment based on your own values.

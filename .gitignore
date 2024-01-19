@@ -7,3 +7,12 @@
 
 # build
 /output
+
+# vscode
+/.vscode
+
+# py
+/__pycache__
+
+# idea
+/.idea

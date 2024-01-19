@@ -13,13 +13,30 @@ keep_std = true
 "com.tencent.tmgp.sgame" = [30, 60, 90, 120]
 
 [powersave]
-tolerant_frame_offset = 1
+fas_boost = false
+scale = 0.5
+jank_scale= 3.0
+big_jank_scale = 5.0
+use_performance_governor = false
+
 
 [balance]
-tolerant_frame_offset = 0
+fas_boost = false
+scale = 0.25
+jank_scale= 3.0
+big_jank_scale = 5.0
+use_performance_governor = true
 
 [performance]
-tolerant_frame_offset = -0.5
+fas_boost = false
+scale = 0.2
+jank_scale= 1.5
+big_jank_scale = 3.0
+use_performance_governor = true
 
 [fast]
-tolerant_frame_offset = -1
+fas_boost = true
+scale = 0.1
+jank_scale= 1.5
+big_jank_scale = 3.0
+use_performance_governor = false

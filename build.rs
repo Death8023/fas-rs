@@ -11,8 +11,9 @@
 *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *  See the License for the specific language governing permissions and
 *  limitations under the License. */
-use std::{error::Error, fs, io::Write};
+use std::{fs, io::Write};
 
+use anyhow::Result;
 use serde_derive::Deserialize;
 
 #[derive(Deserialize, Debug)]
@@ -28,11 +29,12 @@ struct TomlData {
     pub package: Package,
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    println!("cargo:rerun-if-changed=README.md");
+fn main() -> Result<()> {
     println!("cargo:rerun-if-changed=Cargo.lock");
     println!("cargo:rerun-if-changed=Cargo.toml");
-    println!("cargo:rerun-if-changed=LICENSE");
+
+    println!("cargo:rustc-link-search=prebuilt");
+    println!("cargo:rustc-link-lib=binder_ndk");
 
     let toml = fs::read_to_string("Cargo.toml")?;
     let data: TomlData = toml::from_str(&toml)?;
@@ -63,9 +65,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         file,
         "updateJson=https://github.com/shadow3aaa/fas-rs/raw/master/update/update.json"
     )?;
-
-    let _ = fs::remove_file("module/README.md");
-    fs::copy("README.md", "module/README.md")?;
 
     Ok(())
 }

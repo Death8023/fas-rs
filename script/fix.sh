@@ -15,8 +15,8 @@
 # limitations under the License.
 fix_codes() {
 	source $SHDIR/script/toolchains.sh
+	FIX="$RR clippy --fix --allow-dirty --allow-staged -- --target aarch64-linux-android"
 
-	cd $SHDIR && $RR clippy --fix --allow-dirty --allow-staged
-	cd $SHDIR/fas-rs-fw && $RR clippy --fix --allow-dirty --allow-staged
-	cd $SHDIR/zygisk/rust && $RR clippy --fix --allow-dirty --allow-staged
+	cd $SHDIR && $FIX
+	cd $SHDIR/zygisk/rust && $FIX
 }

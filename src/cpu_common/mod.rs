@@ -11,25 +11,13 @@
 *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *  See the License for the specific language governing permissions and
 *  limitations under the License. */
-mod binder;
 mod policy;
 
-use std::{
-    cell::Cell,
-    collections::HashSet,
-    ffi::OsStr,
-    fs,
-    process::Command,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-};
+use std::{cell::Cell, collections::HashSet, ffi::OsStr, fs};
 
+use crate::framework::{prelude::*, Result as FrameworkResult};
 use anyhow::Result;
-use fas_rs_fw::prelude::*;
 
-use binder::UperfExtension;
 use policy::Policy;
 
 pub type Freq = usize; // 单位: khz
@@ -37,9 +25,8 @@ pub type Freq = usize; // 单位: khz
 #[derive(Debug)]
 pub struct CpuCommon {
     freqs: Vec<Freq>,
-    pos: Cell<usize>,
+    fas_freq: Cell<Freq>,
     policies: Vec<Policy>,
-    fas_status: Option<Arc<AtomicBool>>,
 }
 
 impl CpuCommon {
@@ -70,107 +57,78 @@ impl CpuCommon {
             .collect();
         freqs.sort_unstable();
 
-        let mut fas_status = None;
-        if let Ok(prop) = Command::new("getprop").arg("uperf_patched_fas_rs").output() {
-            let prop = String::from_utf8_lossy(&prop.stdout).into_owned();
-
-            if prop.trim() == "true" {
-                let status = Arc::new(AtomicBool::new(false));
-                fas_status = Some(status.clone());
-                UperfExtension::run_server(status)?;
-
-                for policy in &policies {
-                    policy.uperf_ext.set(true);
-                }
-            }
-        }
+        let last_freq = freqs.last().copied().unwrap();
+        let fas_freq = Cell::new(last_freq);
 
         Ok(Self {
-            pos: Cell::new(freqs.len() - 1),
             freqs,
+            fas_freq,
             policies,
-            fas_status,
         })
+    }
+
+    fn reset_freq(&self) {
+        let last_freq = self.freqs.last().copied().unwrap();
+        self.fas_freq.set(last_freq);
+
+        for policy in &self.policies {
+            let _ = policy.set_fas_freq(last_freq);
+        }
     }
 }
 
 impl PerformanceController for CpuCommon {
-    fn limit(&self, _c: &Config) -> fas_rs_fw::Result<()> {
-        let mut pos = self.pos.get();
+    fn limit(&self, _m: Mode, _c: &Config) -> FrameworkResult<()> {
+        let current_freq = self.fas_freq.get();
+        let limited_freq = current_freq.saturating_sub(50000).max(self.freqs[0]);
+        self.fas_freq.set(limited_freq);
 
-        if pos > 0 {
-            pos -= 1;
-            self.pos.set(pos);
-        }
-
-        let freq = self.freqs[pos];
         for policy in &self.policies {
-            let _ = policy.set_fas_freq(freq);
-        }
-
-        if let Some(ref status) = self.fas_status {
-            status.store(true, Ordering::Release);
+            let _ = policy.set_fas_freq(limited_freq);
         }
 
         Ok(())
     }
 
-    fn release(&self, _c: &Config) -> fas_rs_fw::Result<()> {
-        let mut pos = self.pos.get();
+    fn release(&self, _m: Mode, _c: &Config) -> FrameworkResult<()> {
+        let current_freq = self.fas_freq.get();
+        let released_freq = current_freq
+            .saturating_add(50000)
+            .min(self.freqs.last().copied().unwrap());
+        self.fas_freq.set(released_freq);
 
-        if pos < self.freqs.len() - 1 {
-            pos += 1;
-            self.pos.set(pos);
-        }
-
-        let freq = self.freqs[pos];
         for policy in &self.policies {
-            let _ = policy.set_fas_freq(freq);
+            let _ = policy.set_fas_freq(released_freq);
         }
 
         Ok(())
     }
 
-    fn release_max(&self, _c: &Config) -> fas_rs_fw::Result<()> {
-        let pos = self.freqs.len() - 1;
-        self.pos.set(pos);
-
-        let freq = self.freqs[pos];
+    fn release_max(&self, _m: Mode, _c: &Config) -> FrameworkResult<()> {
+        let max_freq = self.freqs.last().copied().unwrap();
 
         for policy in &self.policies {
-            let _ = policy.set_fas_freq(freq);
-        }
-
-        if let Some(ref status) = self.fas_status {
-            status.store(false, Ordering::Release);
+            let _ = policy.set_fas_freq(max_freq);
         }
 
         Ok(())
     }
 
-    fn init_game(&self, c: &Config) -> Result<(), fas_rs_fw::Error> {
-        self.release_max(c)?;
+    fn init_game(&self, m: Mode, c: &Config) -> FrameworkResult<()> {
+        self.reset_freq();
 
         for policy in &self.policies {
-            let _ = policy.init_game();
-        }
-
-        if let Some(ref status) = self.fas_status {
-            status.store(true, Ordering::Release);
+            let _ = policy.init_game(m, c);
         }
 
         Ok(())
     }
 
-    fn init_default(&self, c: &Config) -> Result<(), fas_rs_fw::Error> {
-        self.release_max(c)?;
+    fn init_default(&self, _m: Mode, _c: &Config) -> FrameworkResult<()> {
+        self.reset_freq();
 
         for policy in &self.policies {
             let _ = policy.init_default();
-        }
-
-        if let Some(ref status) = self.fas_status {
-            status.store(false, Ordering::Release);
         }
 
         Ok(())

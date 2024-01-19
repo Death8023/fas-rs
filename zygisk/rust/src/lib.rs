@@ -23,44 +23,25 @@
 
 mod IRemoteService;
 mod analyze;
-mod error;
+mod channel;
+mod data;
 mod hook;
+mod utils;
 
-use std::{
-    ffi::CStr,
-    fs, mem, ptr,
-    sync::mpsc::{self, Receiver, SyncSender},
-    thread,
-    time::Instant,
-};
+use std::{ffi::CStr, fs, ptr, sync::atomic::AtomicBool, thread};
 
 use android_logger::{self, Config};
 use dobby_api::Address;
-use libc::{c_char, c_int, c_void};
+use libc::c_char;
 #[cfg(debug_assertions)]
 use log::debug;
 use log::{error, LevelFilter};
-use once_cell::sync::Lazy;
 use toml::Value;
-
-use error::Result;
-use hook::SymbolHooker;
 
 const CONFIG: &str = "/data/media/0/Android/fas-rs/games.toml";
 
 static mut OLD_FUNC_PTR: Address = ptr::null_mut();
-static CHANNEL: Lazy<Channel> = Lazy::new(|| {
-    let (sx, rx) = mpsc::sync_channel(1024);
-    Channel { sx, rx }
-});
-
-struct Channel {
-    sx: SyncSender<(Address, Instant)>,
-    rx: Receiver<(Address, Instant)>,
-}
-
-unsafe impl Sync for Channel {}
-unsafe impl Send for Channel {}
+static mut IS_CHILD: AtomicBool = AtomicBool::new(false);
 
 #[no_mangle]
 pub unsafe extern "C" fn _need_hook_(process: *const c_char) -> bool {
@@ -78,7 +59,7 @@ pub unsafe extern "C" fn _need_hook_(process: *const c_char) -> bool {
     let Ok(process) = process.to_str() else {
         return false;
     };
-    let process = process_name(process);
+    let process = utils::process_name(process);
 
     let Ok(config) = fs::read_to_string(CONFIG) else {
         error!("Failed to read config file: {CONFIG}");
@@ -102,9 +83,7 @@ pub unsafe extern "C" fn _need_hook_(process: *const c_char) -> bool {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn _hook_handler_(process: *const c_char) -> bool {
-    use IRemoteService::IRemoteService;
-
+pub unsafe extern "C" fn _hook_handler_(process: *const c_char) {
     android_logger::init_once(
         Config::default()
             .with_max_level(LevelFilter::Trace)
@@ -113,63 +92,26 @@ pub unsafe extern "C" fn _hook_handler_(process: *const c_char) -> bool {
 
     let process = CStr::from_ptr(process);
     let Ok(process) = process.to_str() else {
-        return false;
+        return;
     };
-    let process = process_name(process);
+    let process = utils::process_name(process);
 
     #[cfg(debug_assertions)]
     debug!("Try to hook process: {process}");
 
+    libc::pthread_atfork(None, None, Some(utils::at_fork));
+
     if let Err(e) = thread::Builder::new()
         .name("libgui-analyze".into())
         .spawn(move || {
-            if let Err(e) = hook() {
+            if let Err(e) = utils::hook() {
                 error!("Failed to hook, reason: {e:#?}");
                 return;
             }
 
-            let Ok(fas_service) = binder::get_interface::<dyn IRemoteService>("fas_rs_server")
-            else {
-                error!("Failed to get binder interface, fas-rs-server didn't started");
-                return;
-            }; // get binder server interface
-
-            analyze::thread(&fas_service, &process).unwrap_or_else(|e| error!("{e:?}"));
+            analyze::thread(process).unwrap_or_else(|e| error!("{e:?}"));
         })
     {
         error!("Failed to start analyze thread, reason: {e:?}");
     }
-
-    true
-}
-
-fn process_name<S: AsRef<str>>(process: S) -> String {
-    let process = process.as_ref();
-    process
-        .split(':')
-        .next()
-        .unwrap_or_default()
-        .trim()
-        .to_string()
-}
-
-unsafe fn hook() -> Result<()> {
-    OLD_FUNC_PTR = SymbolHooker::new("/system/lib64/libgui.so")?
-        .find_and_hook("android::Surface::queueBuffer(", post_hook as Address)?;
-    Ok(())
-}
-
-/* Function signature(c++):
-*  int Surface::queueBuffer(android_native_buffer_t* buffer, int fenceFd)
-*
-*  This function is called every time a new frame is added to the buffer */
-unsafe extern "C" fn post_hook(android_native_buffer_t: *mut c_void, fence_id: c_int) -> c_int {
-    let ori_fun: extern "C" fn(*mut c_void, c_int) -> c_int = mem::transmute(OLD_FUNC_PTR); // trans ptr to ori func
-
-    let result = ori_fun(android_native_buffer_t, fence_id);
-    let _ = CHANNEL
-        .sx
-        .try_send((android_native_buffer_t, Instant::now()));
-
-    result
 }
